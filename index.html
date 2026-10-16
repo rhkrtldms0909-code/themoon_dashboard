@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>더문 멤버십 대시보드</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@400;600&display=swap">
+<style>
+/* 한 열 대시보드: 헤더 → 필터 → KPI → 플랜 표 → 추이 차트 → 이탈 사유 */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #1b1f27; --muted: #626b7a; --line: #e2e5ea; --grid: #eef0f3; --axis: #c4c9d2;
+  --c-join: #2f5bd3; --c-churn: #e0793a; --ok: #1f8a4c; --bad: #c8382c; --warn: #b7791f; --chip-on-fg: #ffffff;
+  --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --serif: "Noto Serif KR", "AppleMyungjo", "Batang", Georgia, serif;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #12151b; --panel: #1a1e26; --fg: #e8eaee; --muted: #9aa2b1; --line: #2a303b; --grid: #232833; --axis: #3a414e;
+    --c-join: #7b9cf0; --c-churn: #f0a06c; --ok: #5cc98a; --bad: #f07a6e; --warn: #e3b25a; --chip-on-fg: #12151b; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-left, 0px)) 48px max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 20px; }
+.head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+h1 { font-family: var(--serif); font-weight: 600; font-size: 1.75rem; margin: 0; text-wrap: balance; }
+.take { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+.take b { color: var(--fg); font-weight: 600; }
+.pick { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+select { font: inherit; font-size: 14px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: inherit; font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; cursor: pointer; }
+.seg button:hover { color: var(--fg); }
+.seg button[aria-pressed="true"] { color: var(--chip-on-fg); background: var(--fg); border-color: var(--fg); }
+button:focus-visible, select:focus-visible, tr:focus-visible { outline: 2px solid var(--c-join); outline-offset: 2px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; min-width: 0; }
+.card h2 { font-size: 1rem; font-weight: 600; margin: 0; }
+.note { font-size: 12px; color: var(--muted); margin: 4px 0 14px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 12px; }
+.kpi .lbl { font-size: 12px; color: var(--muted); }
+.kpi .val { font-family: var(--serif); font-size: 2.1rem; line-height: 1.15; margin: 6px 0; font-variant-numeric: tabular-nums; }
+.kpi .val small { font-family: var(--sans); font-size: 14px; color: var(--muted); margin-left: 2px; }
+.kpi .sub { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.up { color: var(--ok); } .down { color: var(--bad); }
+.tablebox { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.num { text-align: right; }
+#plans tbody tr { cursor: pointer; }
+#plans tbody tr:hover td, #plans tbody tr.on td { background: var(--grid); }
+#plans td:first-child { font-weight: 500; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.chart { position: relative; min-height: 260px; }
+.chart.small { min-height: 200px; }
+.chart svg { display: block; overflow: visible; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 6px 10px; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; z-index: 2; }
+.tip .d { color: var(--muted); margin-bottom: 2px; }
+.tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.reasons { display: flex; flex-direction: column; gap: 10px; }
+.reason { display: grid; grid-template-columns: minmax(7rem, 9rem) 1fr 2.5rem; align-items: center; gap: 10px; font-size: 13px; }
+.track { height: 10px; background: var(--grid); border-radius: 999px; overflow: hidden; }
+.fill { height: 100%; border-radius: 999px; background: var(--axis); }
+.reason.top .fill { background: var(--bad); }
+.reason .n { text-align: right; font-variant-numeric: tabular-nums; }
+.foot { font-size: 12px; color: var(--muted); line-height: 1.7; max-width: 78ch; margin: 0; }
+.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header class="head">
+    <div>
+      <h1>더문 멤버십 대시보드</h1>
+      <p class="take" id="takeaway">데이터를 불러오는 중입니다.</p>
+    </div>
+    <label class="pick" for="month">기준 월 <select id="month" aria-label="기준 월"></select></label>
+  </header>
+
+  <div class="seg" id="plan-filter" role="group" aria-label="플랜">
+    <button type="button" data-plan="all">전체</button>
+    <button type="button" data-plan="3Package">3Package</button>
+    <button type="button" data-plan="프리미엄 Package">프리미엄 Package</button>
+    <button type="button" data-plan="3+프리미엄">3+프리미엄</button>
+    <button type="button" data-plan="기타">기타</button>
+  </div>
+
+  <section class="kpis">
+    <div class="card kpi"><div class="lbl" id="k-joins-lbl">신규 가입</div><div class="val"><span id="k-joins">—</span><small>명</small></div><div class="sub">전월 대비 <span id="k-joins-d">—</span></div></div>
+    <div class="card kpi"><div class="lbl" id="k-churns-lbl">이탈</div><div class="val"><span id="k-churns">—</span><small>명</small></div><div class="sub">전월 대비 <span id="k-churns-d">—</span></div></div>
+    <div class="card kpi"><div class="lbl">순증 (가입 − 이탈)</div><div class="val"><span id="k-net">—</span><small>명</small></div><div class="sub">런칭 후 누적 가입 <span id="k-total">—</span>명</div></div>
+    <div class="card kpi"><div class="lbl">월말 활성 멤버</div><div class="val"><span id="k-active">—</span><small>명</small></div><div class="sub">누적 이탈 <span id="k-tchurn">—</span>명</div></div>
+  </section>
+
+  <section class="card">
+    <h2 id="plans-title">플랜별 현황</h2>
+    <p class="note">3Package(5만·6만원), 프리미엄 Package(12만·15만·18만원), 3+프리미엄(16만·18만·21만원), 그 외는 기타로 묶었습니다. 행을 누르면 그 플랜만 봅니다.</p>
+    <div class="tablebox">
+      <table id="plans">
+        <thead><tr><th>플랜</th><th class="num">신규 가입</th><th class="num">이탈</th><th class="num">순증</th><th class="num">월말 활성</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>월별 가입·이탈 추이</h2>
+    <p class="note">2025년 8월 런칭부터. 막대를 누르면 그 달로 바뀝니다. 이번 달은 데이터 추출일까지만 집계됩니다.</p>
+    <div class="legend"><span><i style="background:var(--c-join)"></i>신규 가입</span><span><i style="background:var(--c-churn)"></i>이탈</span></div>
+    <div class="chart" id="bars"></div>
+  </section>
+
+  <section class="card">
+    <h2>월말 활성 멤버 추이</h2>
+    <p class="note">각 달 마지막 날 기준으로 멤버십을 유지 중인 인원입니다.</p>
+    <div class="chart small" id="line"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="reasons-title">이탈 사유 (런칭 후 전체)</h2>
+    <p class="note">이탈 설문에서 고른 사유. 복수 선택이고 응답하지 않은 이탈자도 있습니다.</p>
+    <div class="reasons" id="reasons"></div>
+  </section>
+
+  <p class="foot" id="method">집계 방법: 신규 가입은 최초 가입 월 기준입니다. 현재 활성 멤버는 가입자 목록의 최초 가입 일자를 쓰고, 이미 이탈한 멤버는 목록에 가입일이 없어 이탈 일자 − (마지막 회차 × 30일)로 가입 월을 추정했습니다. 그래서 과거 달의 가입 수는 ±1개월 정도 오차가 있을 수 있습니다. 월말 활성 멤버는 그 달 말까지 가입했고 아직 이탈하지 않은 인원입니다. 플랜은 현재(이탈자는 마지막) 이용 플랜 기준입니다. 출처: 팬딩 멤버십 가입자·이탈자 목록, <span id="asof">—</span> 추출.</p>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+(() => {
+  const GROUPS = ['3Package', '프리미엄 Package', '3+프리미엄', '기타'];
+  const state = { plan: 'all', month: null };
+  let D = null;
+  const $ = (id) => document.getElementById(id);
+  const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmtMonth = (k) => { const [y, m] = k.split('-'); return `${y}년 ${Number(m)}월`; };
+  const monthNum = (k) => `${Number(k.split('-')[1])}월`;
+  const signed = (v) => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v);
+  const planName = (g) => (g === 'all' ? '전체 플랜' : g);
+
+  $('plan-filter').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-plan]'); if (b) { state.plan = b.dataset.plan; render(); } });
+  $('plans').addEventListener('click', (ev) => { const tr = ev.target.closest('tr[data-group]'); if (!tr) return; const g = tr.dataset.group; state.plan = state.plan === g ? 'all' : g; render(); });
+  $('plans').addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { const tr = ev.target.closest('tr[data-group]'); if (tr) { ev.preventDefault(); tr.click(); } } });
+  $('month').addEventListener('change', () => { state.month = $('month').value; render(); });
+  let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(render, 120); });
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+
+  function tipAt(box, tip, x, y) {
+    const bw = box.clientWidth, tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(bw - tw, x - tw / 2)) + 'px';
+    tip.style.top = Math.max(0, y - tip.offsetHeight - 10) + 'px';
+  }
+  function grid(g, y, w) {
+    y.ticks(4).forEach((t) => {
+      g.append('line').attr('x1', 0).attr('x2', w).attr('y1', y(t)).attr('y2', y(t)).attr('stroke', t === 0 ? css('--axis') : css('--grid'));
+      g.append('text').attr('x', -6).attr('y', y(t)).attr('dy', '0.32em').attr('text-anchor', 'end').attr('fill', css('--muted')).attr('font-size', 11).text(t);
+    });
+  }
+  function xAxis(g, x, rows, h) {
+    const every = x.bandwidth() < 22 ? 2 : 1;
+    rows.forEach((r, i) => {
+      const cx = x(r.month) + x.bandwidth() / 2;
+      const ys = i === 0 || r.month.endsWith('-01');
+      if (i % every === 0 || ys) g.append('text').attr('x', cx).attr('y', h + 16).attr('text-anchor', 'middle').attr('fill', css('--muted')).attr('font-size', 11).text(monthNum(r.month));
+      if (ys) g.append('text').attr('x', cx).attr('y', h + 31).attr('text-anchor', 'middle').attr('fill', css('--muted')).attr('font-size', 10).text(r.month.slice(0, 4));
+    });
+  }
+  function hit(g, x, h, rows, onMove, box, tip) {
+    rows.forEach((r) => {
+      g.append('rect').attr('x', x(r.month) - x.step() * x.paddingInner() / 2).attr('width', x.step()).attr('y', 0).attr('height', h)
+        .attr('fill', 'transparent').style('cursor', 'pointer')
+        .on('click', () => { state.month = r.month; render(); })
+        .on('mousemove', (ev) => onMove(ev, r))
+        .on('mouseleave', () => { tip.hidden = true; });
+    });
+  }
+
+  function drawBars(rows) {
+    const box = $('bars'); box.replaceChildren();
+    const W = box.clientWidth; if (!W) return;
+    const H = 260, m = { t: 12, r: 4, b: 38, l: 28 }, w = W - m.l - m.r, h = H - m.t - m.b;
+    const x = d3.scaleBand(rows.map((r) => r.month), [0, w]).paddingInner(0.25).paddingOuter(0.1);
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => Math.max(r.joins, r.churns)) || 1], [h, 0]).nice();
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`);
+    const g = svg.append('g').attr('transform', `translate(${m.l},${m.t})`);
+    grid(g, y, w);
+    const sub = d3.scaleBand(['joins', 'churns'], [0, x.bandwidth()]).padding(0.12);
+    const bw = Math.min(sub.bandwidth(), 32);
+    const colors = { joins: css('--c-join'), churns: css('--c-churn') };
+    rows.forEach((r) => {
+      const grp = g.append('g').style('opacity', r.month === state.month ? 1 : 0.45);
+      ['joins', 'churns'].forEach((k) => grp.append('rect').attr('x', x(r.month) + sub(k) + (sub.bandwidth() - bw) / 2).attr('width', bw)
+        .attr('y', y(r[k])).attr('height', Math.max(0, h - y(r[k]))).attr('rx', Math.min(4, bw / 2)).attr('fill', colors[k]));
+    });
+    xAxis(g, x, rows, h);
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; box.appendChild(tip);
+    hit(g, x, h, rows, (ev, r) => {
+      tip.hidden = false; tip.replaceChildren();
+      const d = document.createElement('div'); d.className = 'd'; d.textContent = fmtMonth(r.month) + (r.month === D.as_of.slice(0, 7) ? ' (진행 중)' : ''); tip.appendChild(d);
+      [['신규 가입', r.joins, colors.joins], ['이탈', r.churns, colors.churns], ['순증', signed(r.net), null]].forEach(([n, v, c]) => {
+        const line = document.createElement('div');
+        if (c) { const s = document.createElement('i'); s.style.background = c; line.appendChild(s); }
+        line.appendChild(document.createTextNode(`${n} ${v}명`)); tip.appendChild(line);
+      });
+      tipAt(box, tip, d3.pointer(ev, box)[0], m.t + y(Math.max(r.joins, r.churns)));
+    }, box, tip);
+  }
+
+  function drawLine(rows) {
+    const box = $('line'); box.replaceChildren();
+    const W = box.clientWidth; if (!W) return;
+    const H = 200, m = { t: 22, r: 12, b: 38, l: 28 }, w = W - m.l - m.r, h = H - m.t - m.b;
+    const x = d3.scaleBand(rows.map((r) => r.month), [0, w]).paddingInner(0.25).paddingOuter(0.1);
+    const cx = (r) => x(r.month) + x.bandwidth() / 2;
+    const y = d3.scaleLinear([0, d3.max(rows, (r) => r.active_end) || 1], [h, 0]).nice();
+    const c = css('--c-join');
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('height', H).attr('viewBox', `0 0 ${W} ${H}`);
+    const gr = svg.append('defs').append('linearGradient').attr('id', 'area').attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+    [[0, .26], [.25, .16], [.5, .08], [.75, .03], [1, 0]].forEach(([o, a]) => gr.append('stop').attr('offset', o).attr('stop-color', c).attr('stop-opacity', a));
+    const g = svg.append('g').attr('transform', `translate(${m.l},${m.t})`);
+    grid(g, y, w);
+    g.append('path').datum(rows).attr('fill', 'url(#area)').attr('d', d3.area().x(cx).y0(h).y1((r) => y(r.active_end)));
+    g.append('path').datum(rows).attr('fill', 'none').attr('stroke', c).attr('stroke-width', 2).attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round').attr('d', d3.line().x(cx).y((r) => y(r.active_end)));
+    const sr = rows.find((r) => r.month === state.month);
+    if (sr) {
+      g.append('circle').attr('cx', cx(sr)).attr('cy', y(sr.active_end)).attr('r', 4.5).attr('fill', c).attr('stroke', css('--panel')).attr('stroke-width', 2);
+      const t = g.append('text').attr('y', y(sr.active_end) - 10).attr('text-anchor', 'middle').attr('fill', css('--fg')).attr('font-size', 12).attr('font-weight', 600).text(sr.active_end + '명');
+      const tw = t.node().getComputedTextLength();
+      t.attr('x', Math.max(tw / 2, Math.min(w - tw / 2, cx(sr))));
+    }
+    xAxis(g, x, rows, h);
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; box.appendChild(tip);
+    hit(g, x, h, rows, (ev, r) => {
+      tip.hidden = false; tip.replaceChildren();
+      const d = document.createElement('div'); d.className = 'd'; d.textContent = fmtMonth(r.month) + ' 말'; tip.appendChild(d);
+      tip.appendChild(document.createTextNode(`활성 멤버 ${r.active_end}명`));
+      tipAt(box, tip, m.l + cx(r), m.t + y(r.active_end));
+    }, box, tip);
+  }
+
+  function delta(id, v, goodUp) {
+    const el = $(id);
+    if (v === null || v === undefined) { el.textContent = '—'; el.className = ''; return; }
+    el.textContent = signed(v);
+    el.className = v === 0 ? '' : ((v > 0) === goodUp ? 'up' : 'down');
+  }
+
+  function render() {
+    if (!D) return;
+    const plan = state.plan;
+    document.querySelectorAll('#plan-filter button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.plan === plan)));
+    const rows = D.monthly.filter((r) => r.group === plan);
+    const months = rows.map((r) => r.month);
+    if (!state.month || !months.includes(state.month)) state.month = months[months.length - 1];
+    const month = state.month, mm = monthNum(month), live = month === D.as_of.slice(0, 7);
+    $('month').replaceChildren(...months.slice().reverse().map((k) => new Option(fmtMonth(k) + (k === D.as_of.slice(0, 7) ? ' (진행 중)' : ''), k)));
+    $('month').value = month;
+
+    const r = rows.find((x) => x.month === month);
+    $('k-joins').textContent = r.joins; $('k-churns').textContent = r.churns; $('k-net').textContent = signed(r.net); $('k-active').textContent = r.active_end;
+    $('k-joins-lbl').textContent = `${mm} 신규 가입`; $('k-churns-lbl').textContent = `${mm} 이탈`;
+    delta('k-joins-d', r.joins_delta, true); delta('k-churns-d', r.churns_delta, false);
+    const t = D.totals.find((x) => x.group === plan);
+    $('k-total').textContent = t.total_joins; $('k-tchurn').textContent = t.total_churns;
+
+    const take = $('takeaway'); take.replaceChildren();
+    const b = (s) => { const e = document.createElement('b'); e.textContent = s; return e; };
+    take.append(`${fmtMonth(month)} ${live ? `(${Number(D.as_of.slice(8, 10))}일까지) ` : ''}${plan === 'all' ? '' : plan + ' '}신규 가입 `, b(r.joins + '명'), ', 이탈 ', b(r.churns + '명'),
+      `으로 ${r.net >= 0 ? '순증' : '순감'} `, b(signed(r.net) + '명'), '. 월말 활성 멤버는 ', b(r.active_end + '명'), '입니다.');
+
+    $('plans-title').textContent = `${fmtMonth(month)} 플랜별 현황`;
+    const tb = $('plans').querySelector('tbody'); tb.replaceChildren();
+    ['all', ...GROUPS].forEach((g) => {
+      const pr = D.monthly.find((x) => x.group === g && x.month === month); if (!pr) return;
+      const tr = document.createElement('tr'); tr.dataset.group = g; tr.tabIndex = 0; if (g === plan && g !== 'all') tr.className = 'on';
+      [planName(g), pr.joins, pr.churns, signed(pr.net), pr.active_end].forEach((v, i) => { const td = document.createElement('td'); if (i) td.className = 'num'; td.textContent = v; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+
+    drawBars(rows); drawLine(rows);
+
+    $('reasons-title').textContent = `이탈 사유 (런칭 후 전체${plan === 'all' ? '' : ' · ' + plan})`;
+    const list = D.reasons.filter((x) => x.group === plan).sort((a, c) => c.n - a.n);
+    const max = d3.max(list, (x) => x.n) || 1;
+    const rb = $('reasons'); rb.replaceChildren();
+    list.forEach((x, i) => {
+      const row = document.createElement('div'); row.className = 'reason' + (i === 0 && x.n > 0 ? ' top' : '');
+      const l = document.createElement('span'); l.textContent = x.reason;
+      const tr = document.createElement('div'); tr.className = 'track';
+      const f = document.createElement('div'); f.className = 'fill'; f.style.width = (x.n / max * 100) + '%'; tr.appendChild(f);
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = x.n + '명';
+      row.append(l, tr, n); rb.appendChild(row);
+    });
+  }
+
+  fetch('data.json', { cache: 'no-cache' })
+    .then((res) => { if (!res.ok) throw new Error(res.status); return res.json(); })
+    .then((d) => { D = d; $('asof').textContent = d.as_of; render(); })
+    .catch(() => { const t = $('takeaway'); t.textContent = 'data.json을 불러오지 못했습니다. 파일이 index.html과 같은 폴더에 있는지 확인해 주세요.'; t.className = 'take err'; });
+})();
+</script>
+</body>
+</html>
